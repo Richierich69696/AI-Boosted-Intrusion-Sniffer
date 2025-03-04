@@ -81,6 +81,9 @@ for i, pred in enumerate(preds):
         print(f"Alert! Packet {i} looks sus—size {test_data[i][0]}!")
     else:
         print(f"Packet {i} is chill.")
+
+
+
 Run It: In command line (after “cd” to IntrusionSniffer), type “python intrusion_sniffer.py”. See what it flags!
 Bumps in the Road
 
