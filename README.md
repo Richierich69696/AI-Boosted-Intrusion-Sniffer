@@ -1,96 +1,120 @@
-# AI-Boosted-Intrusion-Sniffer
-AI-Boosted Intrusion Sniffer
+AI-Boosted-Intrusion-Sniffer:
+Signature-based intrusion detection tools are reliable for known threats. The problem is that attackers know this too. Novel attack patterns, slow reconnaissance, and low-volume probing can slip past rule-based systems entirely because they do not match any existing signature.
 
-Hey, I’m Raj—a cybersecurity nut with a Master’s in Info Systems and Security. This project amps up my old Intrusion Detection System (IDS) game by tossing AI into the mix. I used to run Snort to catch network threats, but now I’ve got AI sniffing out weird patterns Snort might miss. It’s like giving my guard dog a superpower!
+This project tackles that gap using anomaly detection — training a model on what normal network traffic looks like, then flagging anything that deviates from it.
 
-What’s the Big Idea?
 
-Networks get hit with sneaky attacks—like someone probing your ports or flooding your Wi-Fi. Snort catches the obvious stuff, but AI digs deeper, learning what’s “normal” for my network and flagging the oddballs. Think of it as a smarter IDS.
+Why I Built This
+Working with network monitoring tools taught me that the most dangerous traffic is often the quietest. A port scan spread over hours looks nothing like the aggressive scans Snort rules are written to catch. Anomaly-based detection catches those slow, deliberate probes that signature tools miss — and that is exactly what this project demonstrates.
 
-How I Made It Happen
 
-Here’s the rundown, like I’m walking you through it:
 
-1. Capture Traffic: I fired up Wireshark to grab network chatter—like “192.168.1.10 hitting port 80 a bunch.” Saved it as a .pcap file.
-   Example: My laptop streaming YouTube vs. some random IP scanning me.
+What It Does
+Captures network traffic using Wireshark, parses the packet capture with pyshark, trains an Isolation Forest model on normal traffic patterns, and flags packets or sessions that deviate significantly from that baseline as potential intrusions.
 
-2. Crunch the Data: Turned that traffic into numbers—packet sizes, times, IPs. Like “10 packets, 500 bytes, 2 seconds apart.”
-   Macro Detail: Used “pandas” to organize it—like a spreadsheet for nerds.
 
-3. Train the AI: Fed it a day’s worth of my normal traffic (Netflix, emails), then taught it to spot weirdness—like 1000 tiny packets in a minute.
-   Example: Normal: 50 packets to Google. Weird: 2000 to some unknown IP.
-   Macro Detail: Went with “scikit-learn’s Isolation Forest”—it’s killer at finding outliers.
+Tools and Libraries
+Python 3.11 — core language
+Wireshark — packet capture
+pyshark — Python interface for reading pcap files
+scikit-learn — Isolation Forest anomaly detector
+pandas — data structuring and feature engineering
 
-4. Catch Intruders: Ran it live—AI flags anything funky, like a port scan I simulated with Nmap.
-   Example: “Alert! 192.168.1.50 looks sus—too many packets!”
 
-Stuff You’ll Need
 
-Python: Grab it from python.org—my main tool.
-Helpers:
-- scikit-learn—for the AI smarts.
-- pandas—to handle data.
-- pyshark—to read Wireshark files in Python.
-Wireshark: Free network sniffer—love this thing.
-Your Wi-Fi: Test on your own network.
+How It Works
 
-Let’s Build It—Step by Step with Commands
+Step 1 — Capture Baseline Traffic
+Open Wireshark, select your active network interface, and capture 10+ minutes of normal activity — browsing, emails, streaming. Save as normal.pcap in your project folder.
+The more baseline data you capture the better the model understands what normal looks like for your specific environment.
 
-1. Install Python: Hit python.org, download 3.11, install with “Add to PATH” checked.
-   Command: In command line (Windows: “cmd”; Mac: “terminal”), type “python --version”. Should say “Python 3.11.x”.
+Step 2 — Install Dependencies
+pip install scikit-learn
+pip install pandas
+pip install pyshark
+Note: pyshark requires Wireshark to be installed first as it depends on the tshark binary.
 
-2. Get Helpers: In command line, run these one by one:
-   - “pip install scikit-learn” (AI brain).
-   - “pip install pandas” (data organizer).
-   - “pip install pyshark” (traffic reader—might need Wireshark installed first).
 
-3. Set Up Folder: Make “IntrusionSniffer” on your desktop.
-   Command: “cd Desktop\IntrusionSniffer” (Windows) or “cd ~/Desktop/IntrusionSniffer” (Mac).
-
-4. Grab Some Traffic: Open Wireshark, pick your Wi-Fi, hit “Start.” Surf normally for 5 mins, stop, save as “normal.pcap” in your folder.
-
-5. Code It: Open Notepad, paste this, save as “intrusion_sniffer.py”:
-```python
-# My AI intrusion catcher
+Step 3 — Train and Detect
+Save as intrusion_sniffer.py:
 import pyshark
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 
-# Read traffic
+# Parse packet capture
 cap = pyshark.FileCapture("normal.pcap")
 data = []
+
 for pkt in cap:
     try:
-        data.append([pkt.length, pkt.ip.src, pkt.ip.dst])
+        data.append({
+            "size": float(pkt.length),
+            "src": pkt.ip.src,
+            "dst": pkt.ip.dst
+        })
     except AttributeError:
-        pass
+        pass  # Skip non-IP packets
 
-# Make it numbers
-df = pd.DataFrame(data, columns=["size", "src", "dst"])
-df["size"] = df["size"].astype(float)
+# Build feature dataframe
+df = pd.DataFrame(data)
 
-# Train AI
-model = IsolationForest(contamination=0.1)  # 10% might be weird
-model.fit(df[["size"]])  # Just size for now—add more later
+# Train anomaly detection model
+# contamination = expected proportion of anomalies in baseline
+model = IsolationForest(contamination=0.05, random_state=42)
+model.fit(df[["size"]])
 
-# Test it
-test_data = [[100], [2000], [50]]  # Fake new packets
-preds = model.predict(test_data)
-for i, pred in enumerate(preds):
+# Evaluate new incoming packets
+new_packets = pd.DataFrame([[100], [2000], [50], [5000]], columns=["size"])
+predictions = model.predict(new_packets)
+
+print("\n=== INTRUSION SNIFFER RESULTS ===\n")
+for i, pred in enumerate(predictions):
+    size = new_packets["size"][i]
     if pred == -1:
-        print(f"Alert! Packet {i} looks sus—size {test_data[i][0]}!")
+        print(f"  [ALERT]  Packet {i+1} — size {size} bytes — anomalous pattern detected")
     else:
-        print(f"Packet {i} is chill.")
+        print(f"  [CLEAR]  Packet {i+1} — size {size} bytes — within normal range")
+Run it:
+python intrusion_sniffer.py
+
+
+Step 4 — Sample Output
+=== INTRUSION SNIFFER RESULTS ===
+
+  [CLEAR]  Packet 1 — size 100 bytes  — within normal range
+  [ALERT]  Packet 2 — size 2000 bytes — anomalous pattern detected
+  [CLEAR]  Packet 3 — size 50 bytes   — within normal range
+  [ALERT]  Packet 4 — size 5000 bytes — anomalous pattern detected
+Tuning the Model
+Too many false alerts — lower the contamination value:
+IsolationForest(contamination=0.02)  # More conservative
+Missing real threats — raise it slightly:
+IsolationForest(contamination=0.10)  # More sensitive
+Add more features for better accuracy — packet timing, port numbers, protocol type, and session duration all significantly improve detection quality beyond packet size alone.
 
 
 
-Run It: In command line (after “cd” to IntrusionSniffer), type “python intrusion_sniffer.py”. See what it flags!
-Bumps in the Road
 
-Small Data: 2 minutes of traffic sucks—grab at least 5-10 mins.
-Tuning: Too many alerts? Tweak “contamination” (like 0.05).
-Windows Hiccups: Pyshark might whine—install Wireshark first.
+Limitations and Next Steps
+Single feature model — packet size alone is not enough for production detection. Time intervals, destination port distribution, and IP reputation scoring would make this significantly more robust.
 
-Why I Love It
+Offline analysis — this version runs on saved pcap files. Real-time detection would require streaming the pyshark capture directly into the model pipeline.
 
-Combines my Snort skills with AI—catches stuff manually I’d miss. Perfect for my auditing vibe.
+Environment specific — the baseline must match the environment being monitored. A model trained on home network traffic will generate excessive alerts on enterprise traffic and vice versa.
+
+
+
+What I Learned:
+How anomaly detection differs fundamentally from signature-based detection and why both are needed
+Why baselining normal behavior is as important as knowing what attacks look like
+How Isolation Forest identifies outliers by measuring how easily a data point can be separated from the rest
+The practical challenges of tuning detection sensitivity in a real network environment.
+
+
+$ echo connect_with_me:
+╔═════════════════════════════════════╗
+║  LinkedIn  →  linkedin.com/in rajesh-rathlavathu23  ║
+║  Portfolio →  Richierich69696.github.io              ║
+║  Email     →  rajeshrathlavathu@gmail.com            ║
+║  GitHub    →  github.com/Richierich69696              ║
+╚═════════════════════════════════════╝
